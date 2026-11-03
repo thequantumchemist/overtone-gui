@@ -1,0 +1,82 @@
+# Publish to PyPI when a GitHub Release is published.
+#
+# Release procedure:
+#   1. Bump the version in pyproject.toml and src/overtone_gui/__init__.py in a PR
+#   2. After merging, create a GitHub Release with the tag `v<version>` (e.g. v0.2.0)
+#
+# Nothing is uploaded unless the test suite passes on all supported Pythons
+# (tests.yml).
+#
+# Uploads use PyPI trusted publishing (no API token). On PyPI, add a trusted
+# publisher for this repository, workflow `publish.yml` and environment `pypi`
+# (before the first release: a "pending publisher" for project overtone-gui).
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    uses: ./.github/workflows/tests.yml
+    with:
+      python-versions: '["3.11", "3.12", "3.13"]'
+
+  build:
+    name: Build distributions
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6.8.0
+        with:
+          enable-cache: false  # no cache in release builds
+
+      - name: Check that the release tag matches the package version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="$(uv version --short)"
+          if [ "${TAG}" != "v${version}" ]; then
+            echo "::error::Release tag '${TAG}' does not match the version in pyproject.toml (expected 'v${version}')"
+            exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Smoke test the wheel
+        run: |
+          uv run --isolated --no-project --with dist/*.whl overtone-gui version
+          uv run --isolated --no-project --with dist/*.whl \
+            python -c "import overtone_gui.app, overtone_gui.student; print('ok')"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Upload to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/overtone-gui/
+    permissions:
+      id-token: write  # required for trusted publishing
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3

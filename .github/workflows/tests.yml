@@ -1,0 +1,82 @@
+# Run the test suite.
+#
+# Two OVERTONE cores:
+#   release  overtone-vpt2 from PyPI, as users get it with pip install
+#   main     the main branch of thequantumchemist/overtone, so core changes
+#            that would break the GUI show up before they are released
+#            (informational: a failure there does not block a merge)
+#
+# Pull requests and pushes to main: the oldest supported Python only.
+# Weekly, on manual dispatch and before every release (called from
+# publish.yml): all supported Pythons.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 5 * * 1"  # Mondays 05:00 UTC
+  workflow_dispatch:
+    inputs:
+      python-versions:
+        description: JSON list of Python versions
+        type: string
+        default: '["3.11", "3.12", "3.13"]'
+  workflow_call:
+    inputs:
+      python-versions:
+        description: JSON list of Python versions
+        type: string
+        default: '["3.11", "3.12", "3.13"]'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Python ${{ matrix.python }}, ${{ matrix.core }} core
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.core == 'main' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ${{ fromJSON(inputs.python-versions || (github.event_name == 'schedule' && '["3.11", "3.12", "3.13"]') || '["3.11"]') }}
+        core: [release, main]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6.8.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        env:
+          CORE: ${{ matrix.core }}
+        run: |
+          uv venv
+          if [ "${CORE}" = "main" ]; then
+            uv pip install ".[test]" "overtone-vpt2 @ git+https://github.com/thequantumchemist/overtone.git@main"
+          else
+            uv pip install ".[test]"
+          fi
+          uv pip list | grep -i -E "^(overtone|panel|tblite)"
+      - name: Test
+        id: test
+        env:
+          OMP_NUM_THREADS: "1"
+        run: .venv/bin/python -m pytest --cov=overtone_gui --cov-report=term
+      - name: Coverage summary
+        if: ${{ !cancelled() && steps.test.outcome != 'skipped' }}
+        env:
+          PYTHON: ${{ matrix.python }}
+          CORE: ${{ matrix.core }}
+        run: |
+          {
+            echo "### Coverage (Python ${PYTHON}, ${CORE} core)"
+            .venv/bin/python -m coverage report --format=markdown
+          } >> "${GITHUB_STEP_SUMMARY}"

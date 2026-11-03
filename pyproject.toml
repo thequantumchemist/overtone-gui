@@ -1,0 +1,62 @@
+[project]
+name = "overtone-gui"
+version = "0.1.0"
+description = "Browser app for OVERTONE: view anharmonic VPT2 spectra, compare methods, export figures, and compute small molecules with GFN2-xTB for teaching."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Basila Bhanu Pattani Ameerjan" },
+    { name = "Mads-Peter Verner Christiansen" },
+    { name = "Wilke Dononelli" },
+]
+keywords = ["vibrational spectroscopy", "VPT2", "anharmonic", "overtones", "GUI", "teaching"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Education",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Framework :: Panel",
+]
+dependencies = [
+    # The GUI reads OVERTONE's result files and calls recompute_vpt2,
+    # estimate_cost and SerialEngine. Raise the upper bound after the tests
+    # pass against a new minor version of overtone-vpt2.
+    "overtone-vpt2>=0.1.0,<0.2",
+    "panel>=1.9",
+]
+
+[project.optional-dependencies]
+student = ["tblite"]  # GFN2-xTB for `overtone-gui student`
+test = ["pytest", "pytest-cov", "tblite"]
+
+[project.scripts]
+overtone-gui = "overtone_gui.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/thequantumchemist/overtone-gui"
+Issues = "https://github.com/thequantumchemist/overtone-gui/issues"
+OVERTONE = "https://github.com/thequantumchemist/overtone"
+Documentation = "https://thequantumchemist.github.io/overtone/"
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# The import name is overtone_gui, the distribution overtone-gui
+module-name = "overtone_gui"
+# Ship the test suite in the sdist
+source-include = ["tests/**"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--import-mode=importlib"]
+filterwarnings = [
+    # NumPy 2.5 deprecation raised inside ASE itself
+    "ignore:Setting the shape on a NumPy array:DeprecationWarning",
+]
